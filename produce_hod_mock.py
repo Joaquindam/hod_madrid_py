@@ -130,7 +130,7 @@ LBOX = 1000.0                           # Box size in Mpc/h
 FTYPE = 'txt'                           # Possible input file type: txt
 OUTPUT_DIR = Path("output")
 INPUT_DIR = Path("data/example")
-INFILE = "/home2/guillermo/TFM_JOAQUIN/data/Halos_file_for_hod.txt"
+INFILE = "/home2/guillermo/TFM_JOAQUIN/data/Halos_file_for_hod_conc.txt"
 
 
 # =============================================================================
@@ -155,11 +155,11 @@ GAMMA = -1.4                            # Power law slope for high mass centrals
 
 # If analytical_shape is False, a file should be given:
 HODFIT2SIM = True                       # Set to true if SAM was analyzed with HODFIT2SIM
-CONFORMITY = True                       # If true, use global conformity parameters for HOD shape
+CONFORMITY = False                      # If true, use global conformity parameters for HOD shape
 
 if HODFIT2SIM:
     # Output file from HODfit2sim
-    HOD_SHAPE_FILE = "/home2/guillermo/TFM_JOAQUIN/thesis/SAGE/h2s_output_shuffled.h5"  
+    HOD_SHAPE_FILE = "/home2/guillermo/TFM_JOAQUIN/catalogues/h2s_output_shuffled.h5"  
 else:
     # .txt file with Mmin Mmax Ncen Nsat in mass bins should be given
     HOD_SHAPE_FILE = "/home2/guillermo/TFM_JOAQUIN/thesis/mock_from_SAGE/HOD_shape_file.txt"
@@ -171,7 +171,18 @@ else:
 # ============ 3. Probability distribution function for satellites ============
 # =============================================================================
 
+ANALYTICAL_PDF = True                    # If true, use analytical functions
+
+# For analytical PDF, the following parameters are needed:
 BETA = 0.0                               # Poisson=0, Nearest integer=-2
+
+# If analytical_pdf is False, a file should be given:
+if HODFIT2SIM:
+    # Output file from HODfit2sim
+    HOD_PDF_FILE = "/home2/guillermo/TFM_JOAQUIN/catalogues/h2s_output_shuffled.h5"
+else:
+    # .txt file with k N_halos_with_k_satellites should be given:
+    HOD_PDF_FILE = "/home2/guillermo/TFM_JOAQUIN/thesis/mock_from_SAGE/HOD_pdf_file.txt"
 
 
 # =============================================================================
@@ -181,21 +192,23 @@ BETA = 0.0                               # Poisson=0, Nearest integer=-2
 ANALYTICAL_RP = True                     # If true, use analytical functions
 
 # For analytical radial distribution, the following parameters are needed:
-K = 0.25                                 # NFW truncation parameter
-EXTENDED_NFW = True                      # If true, use extended NFW profile (Analytical)
+READ_CONCENTRATIONS = True               # If true, reads individual halo concentrations
+K = 0.6                                  # NFW truncation parameter for Klypin concentrations
+# If not using Klypin concentrations, individual halo concentrations will be read from the input file
 
-# If using extended NFW profile (analytical), the following parameters are needed:
-N0 = 3928.273                            # Normalization factor
-R0 = 0.34                                # Scale radius (Mpc/h)
-ALPHA_R = 1.23                           # Inner slope
-BETA_R = 3.19                            # Outer slope
-KAPPA_R = -2.1                           # Transition slope
+EXTENDED_NFW = False                     # If true, use extended NFW profile (Analytical)
+# If using extended NFW profile (Analytical), the following parameters are needed:
+N0 = 3899.85                            # Normalization factor
+R0 = 0.33874                             # Scale radius (Mpc/h)
+ALPHA_R = 1.23088                           # Inner slope
+BETA_R = 3.20228                            # Outer slope
+KAPPA_R = -2.08642                           # Transition slope
 
 # If analytical_rp is False, a file should be given:
 
 if HODFIT2SIM:
     # Output file from HODfit2sim
-    HOD_RP_FILE = "/home2/guillermo/TFM_JOAQUIN/thesis/SAGE/h2s_output_shuffled.h5"
+    HOD_RP_FILE = "/home2/guillermo/TFM_JOAQUIN/catalogues/h2s_output_shuffled.h5"
 else:
     # .txt file with rmin rmax Nsat Nsat/sum(Nsat) in radius bins should be given
     HOD_RP_FILE = "/home2/guillermo/TFM_JOAQUIN/thesis/mock_from_SAGE/HOD_rp_file.txt"
@@ -222,30 +235,30 @@ ANALYTICAL_VP = True                     # If true, use analytical functions
 VFACT = 1.0                              # Velocity factor (alpha_v)
 VT = 0.0                                 # Tangential velocity (km/s, =0 or =500)
 VTDISP = 0.0                             # Tangential velocity dispersion (km/s, =0 or =200)
-EXTENDED_VP = True                       # If true, use extended velocity profile (Analytical)
+EXTENDED_VP = False                       # If true, use extended velocity profile (Analytical)
 
 # If using extended velocity profile (analytical), the following parameters are needed:
 # Radial velocity profile (3-Gaussians)
-VR1 = -11954.702                         # Amplitude of first Gaussian
-VR2 = -11489.693                         # Amplitude of second Gaussian
-VR3 = -22660.605                         # Amplitude of third Gaussian
-MU1 = -333.368                           # Mean of first Gaussian
-MU2 = 266.023236                         # Mean of second Gaussian
-MU3 = -379                               # Mean of third Gaussian
-SIGMA1 = -127.831                        # Standard deviation of first Gaussian
-SIGMA2 = -242.559427                     # Standard deviation of second Gaussian
-SIGMA3 = -312.5                          # Standard deviation of third Gaussian
+VR1 = -10601.7                         # Amplitude of first Gaussian
+VR2 = -12038.5                         # Amplitude of second Gaussian
+VR3 = -22749.8                         # Amplitude of third Gaussian
+MU1 = -329.893                           # Mean of first Gaussian
+MU2 = 255.23                         # Mean of second Gaussian
+MU3 = -384.638                               # Mean of third Gaussian
+SIGMA1 = -123.386                        # Standard deviation of first Gaussian
+SIGMA2 = -246.083                     # Standard deviation of second Gaussian
+SIGMA3 = -277.454                         # Standard deviation of third Gaussian
 
 # Tangential velocity profile (Exponential * Power Law)
-V0_TAN = 123.033                          
-EPSILON_TAN = 0.8                       
-OMEGA_TAN =  -6.25e-4                    
-DELTA_TAN = 1.3                          
+V0_TAN = 2.66464                          
+EPSILON_TAN = 0.779307                       
+OMEGA_TAN =  -0.000445626                    
+DELTA_TAN = 1.35091                          
 
 # If analytical_vp is False, a file should be given:
 if HODFIT2SIM:
     # Output file from HODfit2sim
-    HOD_VP_FILE = "/home2/guillermo/TFM_JOAQUIN/thesis/SAGE/h2s_output_shuffled.h5"
+    HOD_VP_FILE = "/home2/guillermo/TFM_JOAQUIN/catalogues/h2s_output_shuffled.h5"
 else:
     # A .txt file with vr_min vr_max Nsat_vr vr_probs vtan_min vtan_max	Nsat_vtan vtan_probs should be given
     HOD_VP_FILE = "/home2/guillermo/TFM_JOAQUIN/thesis/mock_from_SAGE/HOD_vp_file.txt"
@@ -264,9 +277,9 @@ def main():
                                       HODfit2sim=HODFIT2SIM, conformity=CONFORMITY,
                                       hodshape=HODSHAPE, mu=MU, Ac=AC, As=AS,
                                       M0=M0, M1=M1, alpha=ALPHA, sig=SIG, gamma=GAMMA,
-                                      beta=BETA,
-                                      analytical_rp=ANALYTICAL_RP,
-                                      hod_rp_file=HOD_RP_FILE,K=K, extended_NFW=EXTENDED_NFW,
+                                      analytical_pdf=ANALYTICAL_PDF, beta=BETA, hod_pdf_file=HOD_PDF_FILE,
+                                      analytical_rp=ANALYTICAL_RP, read_concentrations=READ_CONCENTRATIONS,
+                                      hod_rp_file=HOD_RP_FILE, K=K, extended_NFW=EXTENDED_NFW,
                                       N0 = N0, r0=R0, alpha_r=ALPHA_R, beta_r=BETA_R, kappa_r=KAPPA_R,
                                       analytical_vp=ANALYTICAL_VP,
                                       hod_vp_file=HOD_VP_FILE,

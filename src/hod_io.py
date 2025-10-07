@@ -7,6 +7,12 @@ from pathlib import Path
 from typing import Tuple, NamedTuple
 import numpy as np
 import src.hod_const as c
+from src.hod_config import (
+    CANONICAL_ORDER,
+    H5_NAME_MAP_WITH_CONC, H5_NAME_MAP_NO_CONC,
+    TXT_NAME_MAP_WITH_CONC, TXT_NAME_MAP_NO_CONC,
+    TXT_POS_WITH_CONC, TXT_POS_NO_CONC
+)
 
 # Define a parameters structure
 class HODParams(NamedTuple):
@@ -32,8 +38,11 @@ class HODParams(NamedTuple):
     alpha: float
     sig: float
     gamma: float
+    analytical_pdf: bool
     beta: float
+    hod_pdf_file: str
     analytical_rp: bool
+    read_concentrations: bool
     K: float
     extended_NFW: bool
     hod_rp_file: str
@@ -69,8 +78,8 @@ def create_hod_params(infile=None, outdir=None, ftype='txt', seed=50,
                       conformity=False, conformity_file=None,
                       hodshape=None, mu=12, Ac=1.0, As=0.5,
                       M0=10**11.95, M1=10**12.35, alpha=0.9, sig=0.08, gamma=-1.4,
-                      beta=0,
-                      analytical_rp=True, K=1, extended_NFW=True,  hod_rp_file=None,
+                      analytical_pdf=True, beta=0, hod_pdf_file=None,
+                      analytical_rp=True, read_concentrations=False, K=1, extended_NFW=True,  hod_rp_file=None,
                       N0=None, r0=None, alpha_r=None, beta_r=None, kappa_r=None,
                       analytical_vp=True, hod_vp_file=None, extended_vp=True,
                       vfact=1, vt=0, vtdisp=0,
@@ -119,8 +128,8 @@ def create_hod_params(infile=None, outdir=None, ftype='txt', seed=50,
                      analytical_shape=analytical_shape, HODfit2sim=HODfit2sim, hod_shape_file=hod_shape_file,
                      conformity=conformity, conformity_file=conformity_file,
                      hodshape=hodshape, mu=mu, Ac=Ac, As=As,
-                     M0=M0, M1=M1, alpha=alpha, sig=sig, gamma=gamma,
-                     beta=beta,
+                     M0=M0, M1=M1, alpha=alpha, sig=sig, gamma=gamma, analytical_pdf=analytical_pdf,
+                     hod_pdf_file=hod_pdf_file, beta=beta, read_concentrations=read_concentrations,
                      analytical_rp=analytical_rp,  K=K, extended_NFW=extended_NFW, hod_rp_file=hod_rp_file,
                      N0=N0, r0=r0, alpha_r=alpha_r, beta_r=beta_r, kappa_r=kappa_r,
                      analytical_vp=analytical_vp, hod_vp_file=hod_vp_file, extended_vp=extended_vp,
@@ -221,9 +230,47 @@ def validate_parameters(params):
 
 
 def line_separator():
-    width = min(os.get_terminal_size().columns, 80)
     separator = "=" * 60
     return separator
+
+def resolve_names_from_header(header_names, name_map):
+    """
+    header_names: list of strings (header)
+    name_map: dict standard -> [synonyms]
+    Returns: dict standard -> index in header (if all required are present)
+    Raises KeyError if any required column is missing from the schema.
+    """
+    hdr_lower = [h.strip() for h in header_names]
+    idx_map = {}
+    for std, aliases in name_map.items():
+        found = False
+        for alias in aliases:
+            if alias in hdr_lower:
+                idx_map[std] = hdr_lower.index(alias)
+                found = True
+                break
+        if not found:
+            raise KeyError(f"Missing column '{std}' in header.")
+    return idx_map
+
+def try_mapping_hdf5(dtype_names, name_map):
+    """
+    Intenta mapear nombres de dtype (tupla) a estándar usando name_map.
+    Devuelve dict estándar -> nombre real en el dataset si tiene éxito.
+    Lanza KeyError si falta algo.
+    """
+    names = set(dtype_names)
+    colmap = {}
+    for std, aliases in name_map.items():
+        matched = None
+        for a in aliases:
+            if a in names:
+                matched = a
+                break
+        if matched is None:
+            raise KeyError(f"Missing field '{std}'")
+        colmap[std] = matched
+    return colmap
 
 
 def read_halo_data_chunked(filename, ftype='txt', chunk_size=c.chunk_size):
@@ -241,8 +288,8 @@ def read_halo_data_chunked(filename, ftype='txt', chunk_size=c.chunk_size):
         
     Yields:
     -------
-    numpy.ndarray: chunk of halo data with shape (n_halos, 8)
-        columns: x, y, z, vx, vy, vz, logM, halo_id
+    numpy.ndarray: chunk of halo data with shape (n_halos, 9)
+        columns: x, y, z, vx, vy, vz, logM, conc, halo_id
     """
     if ftype.lower() == 'hdf5':
         yield from read_hdf5_chunked(filename, chunk_size)
@@ -251,39 +298,118 @@ def read_halo_data_chunked(filename, ftype='txt', chunk_size=c.chunk_size):
 
 
 def read_txt_chunked(filename, chunk_size=c.chunk_size):
-    """Read text file in chunks"""
+    """
+    Returns chunks with shape (n, 9) in order:
+    x,y,z,vx,vy,vz,logM,conc,id  (conc=NaN if not present)
+    """
+    def is_header(tokens):
+        # Si NO todos los tokens son numéricos, lo tratamos como cabecera
+        for t in tokens:
+            try:
+                float(t)
+            except ValueError:
+                return True
+        return False
+
     try:
         with open(filename, 'r') as f:
-            # Skip header if present
-            first_line = f.readline().strip()
-            if first_line.startswith('#'):
-                first_line = f.readline().strip()
-            
-            chunk_data = []
-            
-            # Process first line if it exists
-            if first_line and not first_line.startswith('#'):
-                parts = first_line.split()
-                if len(parts) >= 8:
-                    chunk_data.append([float(p) for p in parts[:7]] + [int(float(parts[7]))])
-            
-            # Process remaining lines
-            for line in f:
+            # Lee líneas hasta encontrar la primera no-vacía
+            first_line = ""
+            while True:
+                pos = f.tell()
+                line = f.readline()
+                if not line:
+                    break
                 line = line.strip()
                 if line and not line.startswith('#'):
-                    parts = line.split()
-                    if len(parts) >= 8:
-                        chunk_data.append([float(p) for p in parts[:7]] + [int(float(parts[7]))])
+                    first_line = line
+                    break
+            if not first_line:
+                return
 
-                        # Yield chunk when it reaches chunk_size
-                        if len(chunk_data) >= chunk_size:
-                            yield np.array(chunk_data)
-                            chunk_data = []
-            
-            # Yield remaining chunk if not empty
-            if chunk_data:
-                yield np.array(chunk_data)
-                
+            tokens = first_line.split()
+            chunk = []
+
+            # ¿Tiene cabecera? (comprobamos la línea anterior por si tenía '#header')
+            # Retrocede una línea y mira si había cabecera comentada
+            f.seek(0)
+            header_tokens = None
+            for line in f:
+                s = line.strip()
+                if not s:
+                    continue
+                if s.startswith('#'):
+                    # posible cabecera: quita '#', trocea
+                    cand = s.lstrip('#').strip().split()
+                    if cand:
+                        header_tokens = cand
+                    continue
+                else:
+                    # primera línea de datos alcanzada
+                    break
+
+            # Determina el esquema
+            has_conc = None
+            idx_map = None
+
+            if header_tokens is not None:
+                # Intenta WITH_CONC y luego NO_CONC
+                try:
+                    idx_map = resolve_names_from_header(header_tokens, TXT_NAME_MAP_WITH_CONC)
+                    has_conc = True
+                except KeyError:
+                    idx_map = resolve_names_from_header(header_tokens, TXT_NAME_MAP_NO_CONC)
+                    has_conc = False
+            else:
+                # Sin cabecera: decide por número de columnas
+                ncols = len(tokens)
+                if ncols >= 9:
+                    has_conc = True
+                    idx_map = TXT_POS_WITH_CONC
+                elif ncols >= 8:
+                    has_conc = False
+                    idx_map = TXT_POS_NO_CONC
+                else:
+                    raise ValueError(f"Expected >=8 columns, got {ncols}")
+
+            # Reposiciona el archivo al comienzo y recorre todas las líneas
+            f.seek(0)
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split()
+                # Validación mínima
+                need = 9 if has_conc else 8
+                if len(parts) < need:
+                    continue
+
+                # Extrae en orden canónico
+                row = [0.0]*9
+                # x..logM
+                row[0] = float(parts[idx_map["x"]])
+                row[1] = float(parts[idx_map["y"]])
+                row[2] = float(parts[idx_map["z"]])
+                row[3] = float(parts[idx_map["vx"]])
+                row[4] = float(parts[idx_map["vy"]])
+                row[5] = float(parts[idx_map["vz"]])
+                row[6] = float(parts[idx_map["logM"]])
+                # conc
+                if has_conc:
+                    row[7] = float(parts[idx_map["conc"]])
+                else:
+                    row[7] = np.nan
+                # id (puede venir como float)
+                row[8] = int(float(parts[idx_map["id"]]))
+
+                chunk.append(row)
+                if len(chunk) >= chunk_size:
+                    yield np.asarray(chunk, dtype=float)
+                    chunk = []
+
+            if chunk:
+                yield np.asarray(chunk, dtype=float)
+
     except FileNotFoundError:
         print(f"ERROR: Could not open input file {filename}")
         return
@@ -291,92 +417,92 @@ def read_txt_chunked(filename, chunk_size=c.chunk_size):
         print(f"ERROR: Error reading file {filename}: {e}")
         return
 
-
 def read_hdf5_chunked(filename, chunk_size=10000):
-    """Read HDF5 file in chunks"""
+    """
+    Returns chunks with shape (n, 9) in order:
+    x,y,z,vx,vy,vz,logM,conc,id  (conc=NaN if not present)
+    """
     try:
         import h5py
-        
         with h5py.File(filename, 'r') as f:
-            # Try common dataset names for halo catalogs
+            # Busca un dataset principal
             possible_names = ['halos', 'Halo', 'data', 'catalog']
             dataset = None
-            
             for name in possible_names:
                 if name in f:
                     dataset = f[name]
                     break
-            
             if dataset is None:
-                # List available datasets
                 print(f"Available datasets in {filename}:")
                 f.visit(print)
                 raise ValueError("Could not find halo data. Please specify the correct dataset name.")
-            
-            # Try to read standard columns
-            # Common column names in halo catalogs
-            col_mappings = {
-                'x': ['x', 'X', 'pos_x', 'position_x'],
-                'y': ['y', 'Y', 'pos_y', 'position_y'], 
-                'z': ['z', 'Z', 'pos_z', 'position_z'],
-                'vx': ['vx', 'VX', 'vel_x', 'velocity_x'],
-                'vy': ['vy', 'VY', 'vel_y', 'velocity_y'],
-                'vz': ['vz', 'VZ', 'vel_z', 'velocity_z'],
-                'logM': ['logM', 'log_mass', 'mass', 'M', 'log10_mass'],
-                'id': ['id', 'ID', 'halo_id', 'haloid'],
-            }
-            
-            # Find actual column names
+
+            # Estructurado (con nombres) vs matriz pura
             if hasattr(dataset, 'dtype') and dataset.dtype.names:
-                # Structured array
-                columns = {}
-                for standard_name, possible_names in col_mappings.items():
-                    for possible_name in possible_names:
-                        if possible_name in dataset.dtype.names:
-                            columns[standard_name] = possible_name
-                            break
-                    if standard_name not in columns:
-                        raise ValueError(f"Could not find column for {standard_name}")
-                
-                n_halos = len(dataset)
-                
-                # Read in chunks
-                for start_idx in range(0, n_halos, chunk_size):
-                    end_idx = min(start_idx + chunk_size, n_halos)
-                    chunk = dataset[start_idx:end_idx]
-                    
-                    # Extract columns in correct order
-                    chunk_data = np.column_stack([
-                        chunk[columns['x']],
-                        chunk[columns['y']],
-                        chunk[columns['z']],
-                        chunk[columns['vx']],
-                        chunk[columns['vy']],
-                        chunk[columns['vz']],
-                        chunk[columns['logM']],
-                        chunk[columns['id']]
-                    ])
-                    
-                    yield chunk_data
-                    
+                names = dataset.dtype.names
+                # 1) intenta WITH_CONC
+                try:
+                    colmap = try_mapping_hdf5(names, H5_NAME_MAP_WITH_CONC)
+                    has_conc = True
+                except KeyError:
+                    # 2) intenta NO_CONC
+                    colmap = try_mapping_hdf5(names, H5_NAME_MAP_NO_CONC)
+                    has_conc = False
+
+                n = len(dataset)
+                for start in range(0, n, chunk_size):
+                    end = min(start + chunk_size, n)
+                    view = dataset[start:end]
+
+                    out = np.empty((end-start, 9), dtype=float)
+                    out[:,0] = view[colmap["x"]]
+                    out[:,1] = view[colmap["y"]]
+                    out[:,2] = view[colmap["z"]]
+                    out[:,3] = view[colmap["vx"]]
+                    out[:,4] = view[colmap["vy"]]
+                    out[:,5] = view[colmap["vz"]]
+                    out[:,6] = view[colmap["logM"]]
+                    if has_conc:
+                        out[:,7] = view[colmap["conc"]]
+                    else:
+                        out[:,7] = np.nan
+                    # id (puede ser int o float)
+                    out[:,8] = np.array(view[colmap["id"]], dtype=float)
+
+                    yield out
+
             else:
-                # Try as regular array (assume columns are in standard order)
-                if len(dataset.shape) != 2 or dataset.shape[1] < 8:
-                    raise ValueError(f"Expected 2D array with at least 8 columns, got shape {dataset.shape}")
-                
-                n_halos = dataset.shape[0]
-                
-                for start_idx in range(0, n_halos, chunk_size):
-                    end_idx = min(start_idx + chunk_size, n_halos)
-                    chunk_data = dataset[start_idx:end_idx, :8]  # Take first 8 columns
-                    yield chunk_data
-                    
+                # Matriz densa sin nombres: decidir por nº de columnas
+                shape = dataset.shape
+                if len(shape) != 2:
+                    raise ValueError(f"Expected 2D array, got shape {shape}")
+                nrows, ncols = shape
+                if ncols < 8:
+                    raise ValueError(f"Expected >=8 columns, got {ncols}")
+
+                has_conc = (ncols >= 9)
+                for start in range(0, nrows, chunk_size):
+                    end = min(start + chunk_size, nrows)
+                    arr = dataset[start:end, :]
+                    out = np.empty((end-start, 9), dtype=float)
+                    # x..logM
+                    out[:,0:7] = arr[:,0:7]
+                    # conc
+                    if has_conc:
+                        out[:,7] = arr[:,7]
+                        out[:,8] = arr[:,8]
+                    else:
+                        out[:,7] = np.nan
+                        out[:,8] = arr[:,7]  # id en la 8ª col cuando no hay conc
+                    yield out
+
     except ImportError:
         print("ERROR: h5py is required to read HDF5 files. Install with: pip install h5py")
         return
     except Exception as e:
         print(f"ERROR: Error reading HDF5 file {filename}: {e}")
         return
+
 
 
 
@@ -394,7 +520,7 @@ def print_parameter_info():
     - Modify file paths in "FILE PATH CONFIGURATION"
     
     Input file format:
-    - Space-separated columns: x y z vx vy vz logM halo_id
+    - Space-separated columns: x y z vx vy vz logM Conc halo_id
     - Lines starting with '#' are treated as comments
     - Units: positions in Mpc/h, velocities in km/s, masses in M_sun/h
     

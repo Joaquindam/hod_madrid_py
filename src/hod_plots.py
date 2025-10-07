@@ -365,7 +365,7 @@ def plot_hod_occupation_from_mock(
     halo_id_col_mock: int = 14,
     is_central_col: int = 15,
     mass_col_halo: int = 6,
-    halo_id_col_halo: int = 7,
+    halo_id_col_halo: int = 8,
     logM_range: tuple = (10.5,14.5),
     show: bool = True
 ):
