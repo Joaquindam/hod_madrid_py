@@ -9,9 +9,9 @@ import numpy as np
 import src.hod_const as c
 from src.hod_config import (
     CANONICAL_ORDER,
-    H5_NAME_MAP_WITH_CONC, H5_NAME_MAP_NO_CONC,
-    TXT_NAME_MAP_WITH_CONC, TXT_NAME_MAP_NO_CONC,
-    TXT_POS_WITH_CONC, TXT_POS_NO_CONC
+    H5_NAME_MAP_WITH_R, H5_NAME_MAP_NO_R,
+    TXT_NAME_MAP_WITH_R, TXT_NAME_MAP_NO_R,
+    TXT_POS_WITH_R, TXT_POS_NO_R
 )
 
 # Define a parameters structure
@@ -288,8 +288,8 @@ def read_halo_data_chunked(filename, ftype='txt', chunk_size=c.chunk_size):
         
     Yields:
     -------
-    numpy.ndarray: chunk of halo data with shape (n_halos, 9)
-        columns: x, y, z, vx, vy, vz, logM, conc, halo_id
+    numpy.ndarray: chunk of halo data with shape (n_halos, 10)
+        columns: x, y, z, vx, vy, vz, logM, Rvir, Rs, halo_id
     """
     if ftype.lower() == 'hdf5':
         yield from read_hdf5_chunked(filename, chunk_size)
@@ -299,8 +299,8 @@ def read_halo_data_chunked(filename, ftype='txt', chunk_size=c.chunk_size):
 
 def read_txt_chunked(filename, chunk_size=c.chunk_size):
     """
-    Returns chunks with shape (n, 9) in order:
-    x,y,z,vx,vy,vz,logM,conc,id  (conc=NaN if not present)
+    Returns chunks with shape (n, 10) in order:
+    x,y,z,vx,vy,vz,logM,Rvir,Rs,id
     """
     def is_header(tokens):
         # Si NO todos los tokens son numéricos, lo tratamos como cabecera
@@ -330,8 +330,6 @@ def read_txt_chunked(filename, chunk_size=c.chunk_size):
             tokens = first_line.split()
             chunk = []
 
-            # ¿Tiene cabecera? (comprobamos la línea anterior por si tenía '#header')
-            # Retrocede una línea y mira si había cabecera comentada
             f.seek(0)
             header_tokens = None
             for line in f:
@@ -339,36 +337,34 @@ def read_txt_chunked(filename, chunk_size=c.chunk_size):
                 if not s:
                     continue
                 if s.startswith('#'):
-                    # posible cabecera: quita '#', trocea
                     cand = s.lstrip('#').strip().split()
                     if cand:
                         header_tokens = cand
                     continue
                 else:
-                    # primera línea de datos alcanzada
                     break
 
             # Determina el esquema
-            has_conc = None
+            has_r = None
             idx_map = None
 
             if header_tokens is not None:
-                # Intenta WITH_CONC y luego NO_CONC
+                # Intenta WITH_R y luego NO_R
                 try:
-                    idx_map = resolve_names_from_header(header_tokens, TXT_NAME_MAP_WITH_CONC)
-                    has_conc = True
+                    idx_map = resolve_names_from_header(header_tokens, TXT_NAME_MAP_WITH_R)
+                    has_r = True
                 except KeyError:
-                    idx_map = resolve_names_from_header(header_tokens, TXT_NAME_MAP_NO_CONC)
-                    has_conc = False
+                    idx_map = resolve_names_from_header(header_tokens, TXT_NAME_MAP_NO_R)
+                    has_r = False
             else:
                 # Sin cabecera: decide por número de columnas
                 ncols = len(tokens)
-                if ncols >= 9:
-                    has_conc = True
-                    idx_map = TXT_POS_WITH_CONC
+                if ncols >= 10:
+                    has_r = True
+                    idx_map = TXT_POS_WITH_R
                 elif ncols >= 8:
-                    has_conc = False
-                    idx_map = TXT_POS_NO_CONC
+                    has_r = False
+                    idx_map = TXT_POS_NO_R
                 else:
                     raise ValueError(f"Expected >=8 columns, got {ncols}")
 
@@ -380,7 +376,7 @@ def read_txt_chunked(filename, chunk_size=c.chunk_size):
                     continue
                 parts = line.split()
                 # Validación mínima
-                need = 9 if has_conc else 8
+                need = 10 if has_r else 8
                 if len(parts) < need:
                     continue
 
@@ -394,13 +390,18 @@ def read_txt_chunked(filename, chunk_size=c.chunk_size):
                 row[4] = float(parts[idx_map["vy"]])
                 row[5] = float(parts[idx_map["vz"]])
                 row[6] = float(parts[idx_map["logM"]])
-                # conc
-                if has_conc:
-                    row[7] = float(parts[idx_map["conc"]])
+                # Rvir
+                if has_r:
+                    row[7] = float(parts[idx_map["Rvir"]])
                 else:
                     row[7] = np.nan
+                # Rs
+                if has_r:
+                    row[8] = float(parts[idx_map["Rs"]])
+                else:
+                    row[8] = np.nan
                 # id (puede venir como float)
-                row[8] = int(float(parts[idx_map["id"]]))
+                row[9] = int(float(parts[idx_map["id"]]))
 
                 chunk.append(row)
                 if len(chunk) >= chunk_size:
@@ -419,8 +420,8 @@ def read_txt_chunked(filename, chunk_size=c.chunk_size):
 
 def read_hdf5_chunked(filename, chunk_size=10000):
     """
-    Returns chunks with shape (n, 9) in order:
-    x,y,z,vx,vy,vz,logM,conc,id  (conc=NaN if not present)
+    Returns chunks with shape (n, 10) in order:
+    x,y,z,vx,vy,vz,logM,Rvir,Rs,id  (Rvir,Rs=NaN if not present)
     """
     try:
         import h5py
@@ -440,14 +441,14 @@ def read_hdf5_chunked(filename, chunk_size=10000):
             # Estructurado (con nombres) vs matriz pura
             if hasattr(dataset, 'dtype') and dataset.dtype.names:
                 names = dataset.dtype.names
-                # 1) intenta WITH_CONC
+                # 1) intenta WITH_R
                 try:
-                    colmap = try_mapping_hdf5(names, H5_NAME_MAP_WITH_CONC)
-                    has_conc = True
+                    colmap = try_mapping_hdf5(names, H5_NAME_MAP_WITH_R)
+                    has_r = True
                 except KeyError:
-                    # 2) intenta NO_CONC
-                    colmap = try_mapping_hdf5(names, H5_NAME_MAP_NO_CONC)
-                    has_conc = False
+                    # 2) intenta NO_R
+                    colmap = try_mapping_hdf5(names, H5_NAME_MAP_NO_R)
+                    has_r = False
 
                 n = len(dataset)
                 for start in range(0, n, chunk_size):
@@ -462,12 +463,16 @@ def read_hdf5_chunked(filename, chunk_size=10000):
                     out[:,4] = view[colmap["vy"]]
                     out[:,5] = view[colmap["vz"]]
                     out[:,6] = view[colmap["logM"]]
-                    if has_conc:
-                        out[:,7] = view[colmap["conc"]]
+                    if has_r:
+                        out[:,7] = view[colmap["Rvir"]]
                     else:
                         out[:,7] = np.nan
+                    if has_r:
+                        out[:,8] = view[colmap["Rs"]]
+                    else:
+                        out[:,8] = np.nan
                     # id (puede ser int o float)
-                    out[:,8] = np.array(view[colmap["id"]], dtype=float)
+                    out[:,9] = np.array(view[colmap["id"]], dtype=float)
 
                     yield out
 
@@ -480,20 +485,22 @@ def read_hdf5_chunked(filename, chunk_size=10000):
                 if ncols < 8:
                     raise ValueError(f"Expected >=8 columns, got {ncols}")
 
-                has_conc = (ncols >= 9)
+                has_r = (ncols >= 10)
                 for start in range(0, nrows, chunk_size):
                     end = min(start + chunk_size, nrows)
                     arr = dataset[start:end, :]
-                    out = np.empty((end-start, 9), dtype=float)
+                    out = np.empty((end-start, 10), dtype=float)
                     # x..logM
                     out[:,0:7] = arr[:,0:7]
-                    # conc
-                    if has_conc:
+                    # Rvir, Rs
+                    if has_r:
                         out[:,7] = arr[:,7]
                         out[:,8] = arr[:,8]
+                        out[:,9] = arr[:,9]  # id en la 10ª col cuando hay Rvir
                     else:
                         out[:,7] = np.nan
-                        out[:,8] = arr[:,7]  # id en la 8ª col cuando no hay conc
+                        out[:,8] = np.nan
+                        out[:,9] = arr[:,7]  # id en la 8ª col cuando no hay Rvir
                     yield out
 
     except ImportError:
@@ -520,7 +527,7 @@ def print_parameter_info():
     - Modify file paths in "FILE PATH CONFIGURATION"
     
     Input file format:
-    - Space-separated columns: x y z vx vy vz logM Conc halo_id
+    - Space-separated columns: x y z vx vy vz logM Rvir Rs halo_id
     - Lines starting with '#' are treated as comments
     - Units: positions in Mpc/h, velocities in km/s, masses in M_sun/h
     
