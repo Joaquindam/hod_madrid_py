@@ -8,7 +8,7 @@ Authors:       Joaquín Delgado Amar, Violeta González Pérez
 Supervisor:    Violeta González Pérez
 Institution:   Universidad Autónoma de Madrid (UAM)
 Created:       07 Jul 2025
-Last Updated:  26 Aug 2025
+Last Updated:  07 Oct 2025
 
 -------------------------------------------------------------------------------
 PURPOSE
@@ -38,7 +38,7 @@ MODES
 -------------------------------------------------------------------------------
 INPUTS
 -------------------------------------------------------------------------------
-1) Halo catalogue (ASCII): x, y, z, vx, vy, vz, logM, ID
+1) Halo catalogue (ASCII): x, y, z, vx, vy, vz, logM, concentration (optional), ID
 2) Optional external files from SAM (ASCII) for empirical models:
    - HOD shape tables
    - Radial distributions
@@ -103,7 +103,6 @@ References: Avila et al. (2020); Reyes Pedraza (2024); HODfit2sim documentation.
 ===============================================================================
 """
 
-
 from pathlib import Path
 import src.hod as hod
 import src.hod_io as io
@@ -161,7 +160,7 @@ if HODFIT2SIM:
     # Output file from HODfit2sim
     HOD_SHAPE_FILE = "/home2/guillermo/TFM_JOAQUIN/catalogues/h2s_output_shuffled.h5"  
 else:
-    # .txt file with Mmin Mmax Ncen Nsat in mass bins should be given
+    # .txt file with  Mmax Ncen NsMminat in mass bins should be given
     HOD_SHAPE_FILE = "/home2/guillermo/TFM_JOAQUIN/thesis/mock_from_SAGE/HOD_shape_file.txt"
     # .txt file with K1_global K2_global should be given
     CONFORMITY_FILE = "/home2/guillermo/TFM_JOAQUIN/thesis/mock_from_SAGE/CONFORMITY_file.txt"
@@ -193,19 +192,18 @@ ANALYTICAL_RP = True                     # If true, use analytical functions
 
 # For analytical radial distribution, the following parameters are needed:
 READ_CONCENTRATIONS = True               # If true, reads individual halo concentrations
-K = 0.6                                  # NFW truncation parameter for Klypin concentrations
+K = 0.6                                  # NFW truncation parameter (from 0 to 1)
 # If not using Klypin concentrations, individual halo concentrations will be read from the input file
 
 EXTENDED_NFW = False                     # If true, use extended NFW profile (Analytical)
 # If using extended NFW profile (Analytical), the following parameters are needed:
-N0 = 3899.85                            # Normalization factor
+N0 = 3899.85                             # Normalization factor
 R0 = 0.33874                             # Scale radius (Mpc/h)
-ALPHA_R = 1.23088                           # Inner slope
-BETA_R = 3.20228                            # Outer slope
-KAPPA_R = -2.08642                           # Transition slope
+ALPHA_R = 1.23088                        # Inner slope
+BETA_R = 3.20228                         # Outer slope
+KAPPA_R = -2.08642                       # Transition slope
 
 # If analytical_rp is False, a file should be given:
-
 if HODFIT2SIM:
     # Output file from HODfit2sim
     HOD_RP_FILE = "/home2/guillermo/TFM_JOAQUIN/catalogues/h2s_output_shuffled.h5"
@@ -235,7 +233,7 @@ ANALYTICAL_VP = True                     # If true, use analytical functions
 VFACT = 1.0                              # Velocity factor (alpha_v)
 VT = 0.0                                 # Tangential velocity (km/s, =0 or =500)
 VTDISP = 0.0                             # Tangential velocity dispersion (km/s, =0 or =200)
-EXTENDED_VP = False                       # If true, use extended velocity profile (Analytical)
+EXTENDED_VP = False                      # If true, use extended velocity profile (Analytical)
 
 # If using extended velocity profile (analytical), the following parameters are needed:
 # Radial velocity profile (3-Gaussians)
@@ -303,26 +301,10 @@ def main():
         if TEST_PLOTS:
             result = plots.make_test_plots(hod_params,OUTPUT_DIR,
                                      verbose=VERBOSE)
-            
-            """
-            vr_bin_edges, vr_probs, vtan_bin_edges, vtan_probs = load_velocity_histograms_from_h5_not_normalized(HOD_SHAPE_FILE)
-            plot_velocity_distribution_mock(
-                mock_file= hod_params.outfile,
-                n_bins=200,
-                output_dir="output",
-                show=True,
-                vr_input_bins=vr_bin_edges,
-                vr_input_pdf=vr_probs,
-                vtan_input_bins=vtan_bin_edges,
-                vtan_input_pdf=vtan_probs
-            )
-            """
         if TEST_2PCF:
-            
             positions_file = OUTPUT_DIR / "galaxy_positions.txt"
             corr.extract_positions_from_galaxy_catalog(
                 hod_params.outfile, positions_file)
-            
             xi_output_file = OUTPUT_DIR / "corrfunc_xi.txt"
             corr.compute_correlation_corrfunc(
                 positions_file=str(positions_file),
@@ -331,17 +313,16 @@ def main():
                 rmin=1.4e-3,     
                 rmax=140.0,
                 n_bins=80,
+                binning='log',
                 n_threads=4,
                 verbose=VERBOSE
             )
-            
             plots.plot_correlation_function(
                 filename=str(xi_output_file),
                 output_png=str(OUTPUT_DIR / "corrfunc_xi.png"),
                 loglog=True,
                 show=True
             )
-
         if TEST_2PCF_RS:
             positions_file_rs = OUTPUT_DIR / "galaxy_positions_rs.txt"
             corr.extract_positions_from_galaxy_catalog_rs(
@@ -356,7 +337,6 @@ def main():
                 los_axis=AXIS_RS,
                 verbose=VERBOSE
             )
-
             xi_output_file_rs = OUTPUT_DIR / "corrfunc_xi_rs.txt"
             corr.compute_correlation_corrfunc(
                 positions_file=str(positions_file_rs),
@@ -365,17 +345,16 @@ def main():
                 rmin=1.4e-3,
                 rmax=140.0,
                 n_bins=80,
+                binning='log',
                 n_threads=4,
                 verbose=VERBOSE
             )
-
             plots.plot_correlation_function(
                 filename=str(xi_output_file_rs),
                 output_png=str(OUTPUT_DIR / "corrfunc_xi_rs.png"),
                 loglog=True,
                 show=True
             )
-
         if TEST_HOD_OCCUPATION:
             plots.plot_hod_occupation_from_mock(
                 mock_file=hod_params.outfile,
@@ -383,7 +362,6 @@ def main():
                 output_png=str(OUTPUT_DIR / "hod_occupation_mock.png"),
                 n_bins=200,
                 show=True)
-
 
     return result
 
