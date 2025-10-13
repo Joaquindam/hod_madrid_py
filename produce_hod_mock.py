@@ -129,7 +129,7 @@ LBOX = 1000.0                           # Box size in Mpc/h
 FTYPE = 'txt'                           # Possible input file type: txt
 OUTPUT_DIR = Path("output")
 INPUT_DIR = Path("data/example")
-INFILE = "/home2/guillermo/TFM_JOAQUIN/data/Halos_file_for_hod_conc.txt"
+INFILE = "/home2/guillermo/TFM_JOAQUIN/data/Halos_file_for_hod_Rvir_Rs.txt"
 
 
 # =============================================================================

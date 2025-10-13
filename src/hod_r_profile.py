@@ -50,7 +50,7 @@ def Rvir_from_mass(M, Delta_vir, rho_crit):
 
 def generate_nfw_position_with_concentration(
     M, zsnap, omega_M, rho_crit, Delta_vir_func,
-    c_halo,                 # concentración individual
+    Rvir, Rs,
     rng=None,
     ngrid=4096,
     loggrid=True
@@ -64,14 +64,12 @@ def generate_nfw_position_with_concentration(
         rng = np.random.default_rng()
 
     # Escalas del halo
-    Delta = Delta_vir_func(zsnap, omega_M)
-    Rvir  = Rvir_from_mass(M, Delta, rho_crit)
-    rs    = Rvir / max(c_halo, 1e-12)
+    c_halo = Rvir / Rs
 
     # CDF hasta x=c (i.e., r<=Rvir)
     xgrid, cdf = build_nfw_cdf_up_to_c(c_halo, ngrid=ngrid, loggrid=loggrid)
     x = sample_from_cdf_1d(xgrid, cdf, rng)
-    r = x * rs
+    r = x * Rs
 
     # Dirección isotrópica
     phi = rng.uniform(0.0, 2.0*np.pi)
@@ -148,11 +146,12 @@ def generate_nfw_position(M, K, zsnap, omega_M):
     return Dx, Dy, Dz
 
 @jit(nopython=True)
-def generate_nfw_position_from_c(M, c_val, zsnap, omega_M, K=1.0):
+def generate_nfw_position_from_c(Rvir, Rs):
     """
     NFW position generation with given concentration c_val.
     """
-    x_max = c_val
+    x_max = Rvir / Rs
+    c_val = Rvir / Rs
 
     I_max = I_NFW(x_max)
     y_rand = np.random.random() * I_max
@@ -170,9 +169,7 @@ def generate_nfw_position_from_c(M, c_val, zsnap, omega_M, K=1.0):
         mid = 0.5 * (low + high)
         y_try = I_NFW(mid)
 
-    Delta_vir_val = Delta_vir(zsnap, omega_M)
-    R_vir = R_from_mass(M, Delta_vir_val, c.rho_crit)
-    R = mid * R_vir / (c_val * K)
+    R = mid * Rvir / (c_val)
 
     phi = np.random.random() * 2.0 * np.pi
     costh = np.random.random() * 2.0 - 1.0

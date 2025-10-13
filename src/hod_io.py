@@ -381,7 +381,7 @@ def read_txt_chunked(filename, chunk_size=c.chunk_size):
                     continue
 
                 # Extrae en orden canónico
-                row = [0.0]*9
+                row = [0.0]*10
                 # x..logM
                 row[0] = float(parts[idx_map["x"]])
                 row[1] = float(parts[idx_map["y"]])
