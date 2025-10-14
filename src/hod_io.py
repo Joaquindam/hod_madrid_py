@@ -392,12 +392,12 @@ def read_txt_chunked(filename, chunk_size=c.chunk_size):
                 row[6] = float(parts[idx_map["logM"]])
                 # Rvir
                 if has_r:
-                    row[7] = float(parts[idx_map["Rvir"]])
+                    row[7] = float(parts[idx_map["Rvir"]]) /1000.0  # frtom kpc/h to Mpc/h
                 else:
                     row[7] = np.nan
                 # Rs
                 if has_r:
-                    row[8] = float(parts[idx_map["Rs"]])
+                    row[8] = float(parts[idx_map["Rs"]]) /1000.0  # from kpc/h to Mpc/h
                 else:
                     row[8] = np.nan
                 # id (puede venir como float)
@@ -464,11 +464,11 @@ def read_hdf5_chunked(filename, chunk_size=10000):
                     out[:,5] = view[colmap["vz"]]
                     out[:,6] = view[colmap["logM"]]
                     if has_r:
-                        out[:,7] = view[colmap["Rvir"]]
+                        out[:,7] = view[colmap["Rvir"]] / 1000.0  # from kpc/h to Mpc/h
                     else:
                         out[:,7] = np.nan
                     if has_r:
-                        out[:,8] = view[colmap["Rs"]]
+                        out[:,8] = view[colmap["Rs"]] / 1000.0  # from kpc/h to Mpc/h
                     else:
                         out[:,8] = np.nan
                     # id (puede ser int o float)

@@ -134,6 +134,12 @@ def generate_nfw_position(M, K, zsnap, omega_M):
     c_val = concentration_klypin(M, zsnap)
 
     R = mid * R_mass / (c_val*K)
+
+    M_test = 1e12  # masa típica de halo
+    Delta_vir_val = Delta_vir(0, 0.3)
+    R_test = R_from_mass(M_test, Delta_vir_val, c.rho_crit)
+    print(R_test)
+
     
     # Generate spherical coordinates
     phi = np.random.random() * 2 * np.pi
