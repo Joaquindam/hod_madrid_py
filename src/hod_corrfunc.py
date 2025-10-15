@@ -157,7 +157,7 @@ def extract_positions_from_galaxy_catalog_rs(
     # To use 1/(a*H), uncomment:
     # a = 1.0 / (1.0 + z_snap)
     # factor = 1.0 / (a * Hz)
-    factor = h / Hz
+    factor = 1 / Hz
 
     # Apply shift along the chosen LOS
     if los_axis == "x":
