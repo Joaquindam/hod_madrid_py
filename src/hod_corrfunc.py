@@ -2,7 +2,7 @@
 
 import numpy as np
 from typing import Tuple, Literal
-from Corrfunc.theory import xi      # requires Corrfunc installed
+from Corrfunc.theory import xi         # requires Corrfunc installed
 
 def extract_positions_from_galaxy_catalog(
     input_catalog_file: str,
@@ -36,8 +36,6 @@ def extract_positions_from_galaxy_catalog(
     - The function assumes the first three columns of the input are x, y, z in
       consistent units (e.g., Mpc/h). It doesn't attempt unit conversion or validation.
     - Values are written with six decimal places using `fmt="%.6f"`.
-    - The input is loaded fully into memory; for very large catalogs, consider a
-      chunked approach (e.g., iterating over the file and writing incrementally).
 
     Examples
     --------
@@ -114,7 +112,7 @@ def extract_positions_from_galaxy_catalog_rs(
 
     Units and conventions
     -------------------
-    - Positions are assumed to be in Mpc (comoving) and velocities in km/s.
+    - Positions are assumed to be in Mpc/h (comoving) and velocities in km/s.
     - H(z) is computed as: H0 * sqrt(Ω_m (1+z)^3 + Ω_Λ), in km/s/Mpc.
     - If you need s_LOS = r_LOS + v_LOS/(a·H), uncomment the two lines in the code:
         a = 1/(1+z_snap)
@@ -239,8 +237,7 @@ def compute_correlation_corrfunc(
     Notes
     -----
     - Positions are treated as comoving and the box is periodic with side `boxsize`.
-    - Poisson errors ignore sample variance and covariance. For precision, estimate a
-      covariance matrix (e.g., jackknife, bootstrap, or mocks).
+    - Errors are computed with simple Poisson statistics: sigma_ξ ≈ (1 + ξ) / √Npairs.
     - Output is CSV with a one-line header and no comment marker.
     """
 

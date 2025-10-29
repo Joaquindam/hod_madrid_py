@@ -1,3 +1,5 @@
+# hod_cosmology.py
+
 import math
 from numba import jit
 
@@ -84,8 +86,7 @@ def Delta_vir(z, omega_M):
     Notes
     -----
     The fitting formula used is:
-        Δ_vir(z) = 18π² + 82d - 39d²
-    where d = 1 - Ω_M(z).
+        Δ_vir(z) = 18π² + 82d - 39d² where d = 1 - Ω_M(z).
     """
     d = 1.0 - omega_Mz(z, omega_M)
     return 18 * math.pi**2 + 82 * d - 39 * d**2
